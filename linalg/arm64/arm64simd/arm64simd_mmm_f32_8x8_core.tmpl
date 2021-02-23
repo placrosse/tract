@@ -287,6 +287,7 @@
     ld1         { v0.4s, v1.4s }, [ x1 ], #32
     ld1         { v4.4s, v5.4s }, [ x2 ], #32
 
+/*
 {% if core == "a53" %}
     cmp         x3, #4
     blt         .packed_packed_loop_1
@@ -441,7 +442,9 @@
     beq .non_linear
 
 {% endif %}
+*/
 
+/*
 .p2align 4
 .packed_packed_loop_1:
 
@@ -465,6 +468,65 @@
 
     ld1         { v0.4s, v1.4s }, [ x1 ], #32
     ld1         { v4.4s, v5.4s }, [ x2 ], #32
+
+    subs        x3, x3, #1
+    bne .packed_packed_loop_1
+
+    b .non_linear
+*/
+
+.p2align 4
+.packed_packed_loop_1:
+    fmla        v16.4s, v0.4s, v4.s[0]
+        ldr         w9, [x1], #4
+    fmla        v17.4s, v1.4s, v4.s[0]
+            ldr         w19, [x2], #4
+    fmla        v18.4s, v0.4s, v4.s[1]
+        ldr         w10, [x1], #4
+    fmla        v19.4s, v1.4s, v4.s[1]
+            ldr         w20, [x2], #4
+    fmla        v20.4s, v0.4s, v4.s[2]
+        ldr         w11, [x1], #4
+    fmla        v21.4s, v1.4s, v4.s[2]
+            ldr         w21, [x2], #4
+    fmla        v22.4s, v0.4s, v4.s[3]
+        ldr         w12, [x1], #4
+    fmla        v23.4s, v1.4s, v4.s[3]
+            ldr         w22, [x2], #4
+
+    fmla        v24.4s, v0.4s, v5.s[0]
+        ldr         w13, [x1], #4
+    fmla        v25.4s, v1.4s, v5.s[0]
+            ldr         w23, [x2], #4
+    fmla        v26.4s, v0.4s, v5.s[1]
+        ldr         w14, [x1], #4
+    fmla        v27.4s, v1.4s, v5.s[1]
+            ldr         w24, [x2], #4
+    fmla        v28.4s, v0.4s, v5.s[2]
+        ldr         w15, [x1], #4
+    fmla        v29.4s, v1.4s, v5.s[2]
+            ldr         w25, [x2], #4
+    fmla        v30.4s, v0.4s, v5.s[3]
+        ldr         w4, [x1], #4
+    fmla        v31.4s, v1.4s, v5.s[3]
+            ldr         w26, [x2], #4
+
+        ins         v0.s[0], w9
+        ins         v1.s[0], w13
+            ins         v4.s[0], w19
+            ins         v5.s[0], w23
+        ins         v0.s[1], w10
+        ins         v1.s[1], w14
+            ins         v4.s[1], w20
+            ins         v5.s[1], w24
+        ins         v0.s[2], w11
+        ins         v1.s[2], w15
+            ins         v4.s[2], w21
+            ins         v5.s[2], w25
+        ins         v0.s[3], w12
+        ins         v1.s[3], w4
+            ins         v4.s[3], w22
+            ins         v5.s[3], w26
 
     subs        x3, x3, #1
     bne .packed_packed_loop_1
