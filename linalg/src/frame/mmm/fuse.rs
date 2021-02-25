@@ -4,11 +4,11 @@ use num_traits::Zero;
 
 use super::{MatMatMulKer, PanelStore};
 use downcast_rs::{impl_downcast, Downcast};
-use tract_data::prelude::*;
+use tract_data::internal::*;
 
 use std::alloc::Layout;
 
-#[derive(PartialEq, Clone, Hash, Debug)]
+#[derive(Clone, Debug)]
 pub enum FusedSpec<'t> {
     Min(&'t Tensor),
     Max(&'t Tensor),
@@ -23,6 +23,7 @@ pub enum FusedSpec<'t> {
     QTowardsEven(&'t Tensor, usize),
     QTowardsPlusInf(&'t Tensor, usize),
     QAway(&'t Tensor, usize),
+    AddUnicast(TensorView<'t>),
 }
 
 #[repr(C, usize)]
@@ -42,6 +43,7 @@ pub enum FusedKerSpec<TI: Copy> {
     QTowardsEven(TI, usize),
     QTowardsPlusInf(TI, usize),
     QAway(TI, usize),
+    AddUnicast(*const TI, usize, usize),
 }
 
 pub trait ScratchSpace: Downcast + Send {}
@@ -111,12 +113,12 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                 | FusedSpec::PerRowMul(v)
                 | FusedSpec::PerColMul(v)
                 | FusedSpec::PerColAdd(v) => {
-                    let (dir, r) = if matches!(spec, FusedSpec::PerColAdd(_) | FusedSpec::PerColMul(_))
-                    {
-                        (right, K::nr())
-                    } else {
-                        (down, K::mr())
-                    };
+                    let (dir, r) =
+                        if matches!(spec, FusedSpec::PerColAdd(_) | FusedSpec::PerColMul(_)) {
+                            (right, K::nr())
+                        } else {
+                            (down, K::mr())
+                        };
                     let have = v.len().saturating_sub(dir * r);
                     let ptr = if have < K::mr() {
                         let buf = self.get_temp_slice(r);
@@ -166,6 +168,19 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                     FusedKerSpec::QTowardsPlusInf(*m.to_scalar_unchecked(), *s)
                 }
                 FusedSpec::QAway(m, s) => FusedKerSpec::QAway(*m.to_scalar_unchecked(), *s),
+                FusedSpec::AddUnicast(tensor) => {
+                    assert!(tensor.rank() == 2);
+                    let rsc = tensor.strides()[0];
+                    let csc = tensor.strides()[1];
+                    let ptr = tensor.as_ptr_unchecked::<TI>().offset(
+                        (rsc * down as isize + csc * right as isize) * std::mem::size_of::<TI>() as isize,
+                    );
+                    FusedKerSpec::AddUnicast(
+                        ptr,
+                        rsc as usize * std::mem::size_of::<TI>(),
+                        csc as usize * std::mem::size_of::<TI>(),
+                    )
+                }
             };
             self.uspecs.push(s);
         }
@@ -199,7 +214,7 @@ pub mod test {
     fn check_non_linear_enum_size() {
         assert_eq!(
             std::mem::size_of::<super::FusedKerSpec<f32>>(),
-            3 * std::mem::size_of::<usize>()
+            4 * std::mem::size_of::<usize>()
         )
     }
 
@@ -926,14 +941,4 @@ pub mod test {
             fused_ops::<K, TA, TB, TC, TI>(&*self.c, &[])
         }
     }
-}
-
-#[test]
-fn test_ker_fuse_spec_size_f32() {
-    assert_eq!(std::mem::size_of::<FusedKerSpec<f32>>(), 3 * std::mem::size_of::<usize>());
-}
-
-#[test]
-fn test_ker_fuse_spec_size_i32() {
-    assert_eq!(std::mem::size_of::<FusedKerSpec<i32>>(), 3 * std::mem::size_of::<usize>());
 }
